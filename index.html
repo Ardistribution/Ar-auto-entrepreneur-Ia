@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Portail Autoentrepreneur AI</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0; padding: 0; background: #f9f9f9;
+      display: flex; flex-direction: column; height: 100vh;
+    }
+    header {
+      background: #007bff;
+      color: white;
+      padding: 15px;
+      text-align: center;
+      font-size: 1.5rem;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 600px;
+      margin: 20px auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      padding: 20px;
+    }
+    #chatbox {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+      height: 300px;
+    }
+    .message {
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 10px;
+      max-width: 80%;
+    }
+    .user {
+      background: #007bff;
+      color: white;
+      align-self: flex-end;
+    }
+    .bot {
+      background: #e2e2e2;
+      color: #333;
+      align-self: flex-start;
+    }
+    form {
+      display: flex;
+      gap: 10px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 10px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      font-size: 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #999;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 10px;
+      font-weight: bold;
+      color: green;
+    }
+  </style>
+</head>
+<body>
+  <header>Portail Autoentrepreneur AI</header>
+  <main>
+    <div id="chatbox"></div>
+    <form id="chat-form">
+      <input type="text" id="message" placeholder="Écris ici..." autocomplete="off" required />
+      <button type="submit">Envoyer</button>
+    </form>
+    <div id="status"></div>
+  </main>
+
+  <script>
+    const chatbox = document.getElementById("chatbox");
+    const form = document.getElementById("chat-form");
+    const messageInput = document.getElementById("message");
+    const status = document.getElementById("status");
+
+    // Stockage des données utilisateur pour la soumission finale
+    let formData = {
+      nom: "",
+      prenom: "",
+      email: "",
+      activite: "",
+      adresse: "",
+      infos: ""
+    };
+
+    function addMessage(text, sender) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      div.className = "message " + sender;
+      chatbox.appendChild(div);
+      chatbox.scrollTop = chatbox.scrollHeight;
+    }
+
+    async function sendMessageToBackend(message) {
+      addMessage(message, "user");
+      messageInput.value = "";
+      status.textContent = "En attente de la réponse de l'IA...";
+
+      try {
+        const res = await fetch("http://localhost:5000/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+        const data = await res.json();
+
+        if (data.reply) {
+          addMessage(data.reply, "bot");
+          status.textContent = "";
+          // Exemple simple : on extrait des infos clés selon un format "Nom: xxx"
+          parseResponse(data.reply);
+        } else if (data.error) {
+          addMessage("Erreur serveur : " + data.error, "bot");
+          status.textContent = "";
+        }
+      } catch (e) {
+        addMessage("Erreur de connexion au serveur", "bot");
+        status.textContent = "";
+      }
+    }
+
+    // Fonction basique pour extraire les infos simples du chatbot et remplir formData
+    function parseResponse(text) {
+      const patterns = {
+        nom: /nom\s*:\s*([^\n]+)/i,
+        prenom: /prénom\s*:\s*([^\n]+)/i,
+        email: /email\s*:\s*([^\n]+)/i,
+        activite: /activité\s*:\s*([^\n]+)/i,
+        adresse: /adresse\s*:\s*([^\n]+)/i,
+        infos: /infos\s*supplémentaires\s*:\s*([^\n]+)/i,
+      };
+      for (const key in patterns) {
+        const match = text.match(patterns[key]);
+        if (match) {
+          formData[key] = match[1].trim();
+        }
+      }
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const message = messageInput.value.trim();
+      if (!message) return;
+      await sendMessageToBackend(message);
+
+      // Condition simplifiée : dès que le formulaire semble complet, on soumet
+      if (
+        formData.nom &&
+        formData.prenom &&
+        formData.email &&
+        formData.activite &&
+        formData.adresse
+      ) {
+        status.textContent = "Soumission des données...";
+        try {
+          const res = await fetch("http://localhost:5000/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formData),
+          });
+          const data = await res.json();
+          if (data.status === "success") {
+            status.textContent = "Dossier soumis avec succès ! Merci.";
+            formData = { nom: "", prenom: "", email: "", activite: "", adresse: "", infos: "" };
+            chatbox.innerHTML = "";
+          } else {
+            status.textContent = "Erreur lors de la soumission.";
+          }
+        } catch (e) {
+          status.textContent = "Erreur de connexion au serveur.";
+        }
+      }
+    });
+
+    // Message de bienvenue automatique
+    window.onload = () => {
+      addMessage("Bonjour ! Je suis ton assistant pour créer ton compte auto-entrepreneur. Pose-moi ta première question ou dis-moi ce que tu veux faire.", "bot");
+    };
+  </script>
+</body>
+</html>
